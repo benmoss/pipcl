@@ -532,6 +532,7 @@ class WindowsPython:
             self.version = version
             self.cpu = cpu
             self.include = sysconfig.get_path('include')
+            base_prefix = sys.base_prefix
 
         else:
             command = 'py -0p'
@@ -569,10 +570,11 @@ class WindowsPython:
                 self.path = path
                 self.version = version
                 self.cpu = cpu
-                command = f'{self.path} -c "import sysconfig; print(sysconfig.get_path(\'include\'))"'
-                _log(f'Finding Python include path by running {command=}.')
-                self.include = subprocess.check_output(command, shell=True, text=True).strip()
-                _log(f'Python include path is {self.include=}.')
+                command = f'{self.path} -c "import sys, sysconfig; print(sysconfig.get_path(\'include\')); print(sys.base_prefix)"'
+                _log(f'Finding Python include path and base prefix by running {command=}.')
+                self.include, base_prefix = subprocess.check_output(command, shell=True, text=True).strip().split('\n')
+                base_prefix = base_prefix.strip()
+                _log(f'Python include path is {self.include=}, base prefix is {base_prefix=}.')
                 #_log( f'pipcl.py:WindowsPython():\n{self.description_ml("    ")}')
                 break
             else:
@@ -580,10 +582,16 @@ class WindowsPython:
                 _log(f'Output from {command!r} was:\n{text}')
                 raise Exception( f'Failed to find python matching cpu={cpu} {version=}.')
 
-        # Oddly there doesn't seem to be a
-        # `sysconfig.get_path('libs')`, but it seems to be next
-        # to `includes`:
-        self.libs = os.path.abspath(f'{self.include}/../libs')
+        # Oddly there doesn't seem to be a `sysconfig.get_path('libs')`. On
+        # Windows, python3.lib etc are in `<sys.base_prefix>/libs`. We
+        # can't rely on this being next to `include`, because some
+        # distributions (e.g. conda-forge python>=3.15) put headers in
+        # `<prefix>/include/python`.
+        self.libs = os.path.abspath(f'{base_prefix}/libs')
+        if not os.path.isdir(self.libs):
+            libs = os.path.abspath(f'{self.include}/../libs')
+            _log(f'{self.libs=} does not exist, falling back to {libs=}.')
+            self.libs = libs
 
         _log( f'WindowsPython:\n{self.description_ml("    ")}')
 
